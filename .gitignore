@@ -47,3 +47,12 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Office temp Files
+~$*
+
+# 翻译文件
+*zh_*
+
+# picture
+pic/
