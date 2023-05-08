@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Foreach Loop</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="YuKi" />
+    <script src="libs/header-attrs-2.20/header-attrs.js"></script>
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <link rel="stylesheet" href="Font_Style.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+.title[
+# Foreach Loop
+]
+.subtitle[
+## Write Code and Package Functions
+]
+.author[
+### YuKi
+]
+.date[
+### 2023/05/11
+]
+
+---
+
+# &lt;h1 lang="zh-CN"&gt;一核有难，多核围观&lt;/h1&gt;
+&lt;br&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="http://img.mp.itc.cn/upload/20170622/af2a615a113c49c49c7fac5e385e7e71_th.jpg" style="width:50%; height: 50%;"&gt;
+&lt;/div&gt;
+
+---
+# &lt;h1 lang="zh-CN"&gt;单核性能有限&lt;/h1&gt;
+&lt;br&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="https://scr.wfcdn.de/23864/Intel-Roadmap-Vorstellung-2021-1627407968-0-12.jpg" style="width:100%; height: 100%;"&gt;
+&lt;/div&gt;
+
+---
+&lt;br&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="https://ars.els-cdn.com/content/image/3-s2.0-B9780128018507000135-f13-02-9780128018507.jpg" style="width:100%; height: 100%;"&gt;
+&lt;/div&gt;
+&lt;center&gt;
+&lt;h2 lang="zh-CN"&gt;如果单核需要1s,八核就只需要0.125s &lt;/h2&gt;
+&lt;h2 lang="zh-CN"&gt;但当单核需要10h，八核就只需要1.25h &lt;/h2&gt;
+&lt;/center&gt;
+
+---
+&lt;br&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/5700g.png" style="width:100%; height: 100%;"&gt;
+&lt;/div&gt;
+
+&lt;center&gt;
+&lt;h2 lang="zh-CN"&gt;况且，现在大多数CPU都有超线程(8C -&gt; 16T) &lt;/h2&gt;
+&lt;/center&gt;
+
+---
+&lt;br&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="https://external-preview.redd.it/gVP9t_69o9pfbVu7ioAOgIEOTsjHFD9jsqstLZvUw8c.png?auto=webp&amp;s=86608b68cde2a65c74ba78c928fc94a7bc9aaf58" style="width:100%; height: 100%;"&gt;
+&lt;/div&gt;
+
+&lt;center&gt;
+&lt;h2 lang="zh-CN"&gt;甚至可以攒钱换个16核32线程的 &lt;/h2&gt;
+&lt;/center&gt;
+
+---
+# &lt;h1 lang="zh-CN"&gt;现在有这样一个任务&lt;/h1&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="https://www.adobe.com/content/dam/dx-dc/images/acrobat/online/riverflow-items/s_illu_split-PDF-files_452x320.svg" style="width:100%; height: 100%;"&gt;
+&lt;/div&gt;
+
+&lt;center&gt;
+&lt;h2 lang="zh-CN"&gt;我需要把一份数据随机分成两半 &lt;/h2&gt;
+&lt;h2 lang="zh-CN"&gt;重复以上操作5000次 &lt;/h2&gt;
+&lt;/center&gt;
+
+---
+# &lt;h1 lang="zh-CN"&gt;如果是单线程&lt;/h1&gt;
+
+```r
+list.SHR.MC &lt;- mcshrgener_st(df.split = df.clean, iteration = 100)
+# iteration = 100
+# user      system    elapsed 
+# 119.55    3.11      124.58 
+# 257 MB
+```
+&lt;center&gt;
+&lt;h2 lang="zh-CN"&gt;100次需要4.1min &lt;/h2&gt;
+&lt;h2 lang="zh-CN"&gt;5000次大概需要205min &lt;/h2&gt;
+&lt;/center&gt;
+
+# &lt;h1 lang="zh-CN"&gt;如果是多线程&lt;/h1&gt;
+
+```r
+list.SHR.MC.para &lt;- splithalf::sh_tool(df.split = df.clean, iteration = 100, nc = 16, method = "mc",
+                                       sub = "Subject", var1 = "Match", var2 = "Identity", var3 = "Session")
+# iteration = 100
+# user      system    elapsed 
+# 4.99      1.59      42.42 
+# 880 MB
+```
+
+&lt;center&gt;
+&lt;h2 lang="zh-CN"&gt;100次需要49s &lt;/h2&gt;
+&lt;h2 lang="zh-CN"&gt;5000次大概需要41min &lt;/h2&gt;
+&lt;/center&gt;
+
+---
+# &lt;h1 lang="en"&gt;Foreach Loop&lt;/h1&gt;
+
+```r
+library(foreach)
+library(parallel)
+library(doParallel)
+
+mcshrgener &lt;- function(df.split, iteration, nc, sub, var1, var2, var3) {
+  # Initialize the parallel backend
+  registerDoParallel(nc)
+  
+    # Run the for loop in parallel
+    split_list &lt;- foreach(j = 1:iteration, .combine = "c") %dopar% {
+      # library() # The package containing functions used within the loop must be loaded within the loop.
+      set.seed(122+j) # The seed must be set within the loop
+      # split-half code
+      # Return the split-half data sets
+      return(list(str_half_split_1, str_half_split_2))
+    }
+  
+  # Stop the parallel backend
+  stopImplicitCluster()
+  
+  # Combine every two sublists into a single list and create a new list of length iteration
+  combined_list &lt;- vector("list", iteration)
+  for (i in 1:iteration) {
+    combined_list[[i]] &lt;- list(split_list[[2*i-1]], split_list[[2*i]])
+  }
+  return(combined_list)
+}
+```
+
+---
+# &lt;h1 lang="en"&gt;Foreach Loop&lt;/h1&gt;
+## &lt;h1 lang="en"&gt;Bug&lt;/h1&gt;
+&lt;br&gt;
+*- 最开始，当得到分裂好的两半数据后* &lt;br&gt;
+*- 我在foreach循环内，将两半数据存入一个更大的list中* &lt;br&gt;
+_- 这意味着，我最终得到一个list，这个list中有5000个子list，每个子list中有两个子子list _&lt;br&gt;
+&lt;br&gt;
+*- 于是我得到了一个空的list，但运行时间和CPU占用却是实实在在的* &lt;br&gt;
+&lt;br&gt;
+*- 因此，我想了个笨办法，我直接让foreach直接返回所有两半数据，然后在循环外将它们存入更大的list中* &lt;br&gt;
+*- 我直接让foreach直接返回所有两半数据，然后在循环外将它们存入更大的list中* &lt;br&gt;
+&lt;br&gt;
+
+---
+# &lt;h1 lang="zh-CN"&gt;Q: 难道没有包可以完成蒙特卡洛分半吗？&lt;/h1&gt;
+## &lt;h2 lang="zh-CN"&gt;A: 据我所知，有也没有&lt;/h2&gt;
+
+_&lt;h4 lang="zh-CN"&gt;有一个包叫splithalfr&lt;/h4&gt;_
+_&lt;h4 lang="en"&gt; https://github.com/tpronk/splithalfr &lt;/h4&gt;_
+
+```r
+by_split( data,
+          participants, 
+          fn_score,
+          stratification = NULL, 
+          replications = 1, 
+          method = c("random", "odd_even", "first_second"), 
+          replace = FALSE,
+          split_p = 0.5, subsample_p = 1, 
+          subsample_n = NULL, careful = TRUE, 
+          match_participants = FALSE, 
+          ncores = detectCores(), 
+          seed = NULL, 
+          verbose = TRUE
+)
+```
+_&lt;h4 lang="zh-CN"&gt;但这个函数只能按照一个变量对数据进行分层分半(stratification)&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;比如按照Match来分层分半&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;half_1中有10个match试次，10个nonmatch试次&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;half_2中也有10个match试次，10个nonmatch试次&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;Create R Project&lt;/h2&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/new_project.png" style="width:90%; height: 90%;"&gt;
+&lt;/div&gt;
+
+_&lt;h4 lang="zh-CN"&gt;新建一个R project&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;Choose R package&lt;/h2&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/new_directory_Rpackage.png" style="width:90%; height: 90%;"&gt;
+&lt;/div&gt;
+
+_&lt;h4 lang="zh-CN"&gt;选择类别为R package&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;Select R functions&lt;/h2&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/create_Rpackage.png" style="width:90%; height: 90%;"&gt;
+&lt;/div&gt;
+
+_&lt;h4 lang="zh-CN"&gt;取一个R包的名字&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;添加("Add...")写好的函数("*.R")&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;Files&lt;/h2&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/package_files.png" style="width:80%; height: 80%;"&gt;
+&lt;/div&gt;
+
+_&lt;h4 lang="zh-CN"&gt;R studio帮你创建好了必须的文件&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;NAMESPACE&lt;/h2&gt;
+&lt;br&gt;
+&lt;br&gt;
+&lt;br&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/NAMESPACE.png" style="width:80%; height: 80%;"&gt;
+&lt;/div&gt;
+&lt;br&gt;
+&lt;br&gt;
+_&lt;h4 lang="zh-CN"&gt;import: 你的函数需要用到的包&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;importFrom: 你的函数需要用到的函数&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;export: 使用者看的到的函数（其他函数可以被隐藏）&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;DESCRIPTION&lt;/h2&gt;
+&lt;br&gt;
+&lt;br&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/DESCRIPTION.png" style="width:80%; height: 80%;"&gt;
+&lt;/div&gt;
+&lt;br&gt;
+&lt;br&gt;
+_&lt;h4 lang="zh-CN"&gt;空什么，填什么&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;Using .R Create .Rd&lt;/h2&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/man.png" style="width:60%; height: 60%;"&gt;
+&lt;/div&gt;
+_&lt;h4 lang="zh-CN"&gt;光标移动到函数名("这里是mc")上&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;按下Ctrl + Shift + Alt + R&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;空什么，填什么&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;我懒得写example，所以删了&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;输入devtools::document&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;Check Package&lt;/h2&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/check_package.png" style="width:60%; height: 60%;"&gt;
+&lt;/div&gt;
+_&lt;h4 lang="zh-CN"&gt;检查这个包是否可以创建了&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;Check Package&lt;/h2&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/succeeded.png" style="width:90%; height: 90%;"&gt;
+&lt;/div&gt;
+_&lt;h4 lang="zh-CN"&gt;出现这个就是成功了&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;不成功就去问问GPT为什么不成功&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;Build Package&lt;/h2&gt;
+&lt;br&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/build.png" style="width:100%; height: 100%;"&gt;
+&lt;/div&gt;
+&lt;br&gt;
+_&lt;h4 lang="zh-CN"&gt;恭喜你制作出了人生中第一个R包&lt;/h4&gt;_
+
+---
+# &lt;h1 lang="zh-CN"&gt;把函数封装成包&lt;/h1&gt;
+## &lt;h2 lang="en"&gt;Install Package&lt;/h2&gt;
+&lt;br&gt;
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="./pic/install.png" style="width:100%; height: 100%;"&gt;
+&lt;/div&gt;
+&lt;br&gt;
+_&lt;h4 lang="zh-CN"&gt;这个包就被安装在了本地&lt;/h4&gt;_
+_&lt;h4 lang="zh-CN"&gt;以后你的Environment就更干净了&lt;/h4&gt;_
+
+---
+&lt;div style="display:flex; align-items:center; justify-content:center;"&gt;
+  &lt;img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRhNdJjpyn-dGW0RvXxTK6r4dTqVJYOzs_2J9gHk0RuqYL_3xbRZaInKmaK2_YBLpnzDYU&amp;usqp=CAU" style="width:90%; height: 90%;"&gt;
+&lt;/div&gt;
+
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+// add `data-at-shortcutkeys` attribute to <body> to resolve conflicts with JAWS
+// screen reader (see PR #262)
+(function(d) {
+  let res = {};
+  d.querySelectorAll('.remark-help-content table tr').forEach(tr => {
+    const t = tr.querySelector('td:nth-child(2)').innerText;
+    tr.querySelectorAll('td:first-child .key').forEach(key => {
+      const k = key.innerText;
+      if (/^[a-z]$/.test(k)) res[k] = t;  // must be a single letter (key)
+    });
+  });
+  d.body.setAttribute('data-at-shortcutkeys', JSON.stringify(res));
+})(document);
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

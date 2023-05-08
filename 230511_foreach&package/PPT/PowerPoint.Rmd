@@ -1,0 +1,290 @@
+---
+title: "Foreach Loop"
+subtitle: "Write Code and Package Functions"
+author: "YuKi"
+institute: ""
+date: "2023/05/11"
+output:
+  xaringan::moon_reader:
+    css: [default, Font_Style.css]
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+# <h1 lang="zh-CN">一核有难，多核围观</h1>
+<br>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="http://img.mp.itc.cn/upload/20170622/af2a615a113c49c49c7fac5e385e7e71_th.jpg" style="width:50%; height: 50%;">
+</div>
+
+---
+# <h1 lang="zh-CN">单核性能有限</h1>
+<br>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="https://scr.wfcdn.de/23864/Intel-Roadmap-Vorstellung-2021-1627407968-0-12.jpg" style="width:100%; height: 100%;">
+</div>
+
+---
+<br>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="https://ars.els-cdn.com/content/image/3-s2.0-B9780128018507000135-f13-02-9780128018507.jpg" style="width:100%; height: 100%;">
+</div>
+<center>
+<h2 lang="zh-CN">如果单核需要1s,八核就只需要0.125s </h2>
+<h2 lang="zh-CN">但当单核需要10h，八核就只需要1.25h </h2>
+</center>
+
+---
+<br>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/5700g.png" style="width:100%; height: 100%;">
+</div>
+
+<center>
+<h2 lang="zh-CN">况且，现在大多数CPU都有超线程(8C -> 16T) </h2>
+</center>
+
+---
+<br>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="https://external-preview.redd.it/gVP9t_69o9pfbVu7ioAOgIEOTsjHFD9jsqstLZvUw8c.png?auto=webp&s=86608b68cde2a65c74ba78c928fc94a7bc9aaf58" style="width:100%; height: 100%;">
+</div>
+
+<center>
+<h2 lang="zh-CN">甚至可以攒钱换个16核32线程的 </h2>
+</center>
+
+---
+# <h1 lang="zh-CN">现在有这样一个任务</h1>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="https://www.adobe.com/content/dam/dx-dc/images/acrobat/online/riverflow-items/s_illu_split-PDF-files_452x320.svg" style="width:100%; height: 100%;">
+</div>
+
+<center>
+<h2 lang="zh-CN">我需要把一份数据随机分成两半 </h2>
+<h2 lang="zh-CN">重复以上操作5000次 </h2>
+</center>
+
+---
+# <h1 lang="zh-CN">如果是单线程</h1>
+```{r Monte Carlo Split Generator single thread, eval=FALSE}
+list.SHR.MC <- mcshrgener_st(df.split = df.clean, iteration = 100)
+# iteration = 100
+# user      system    elapsed 
+# 119.55    3.11      124.58 
+# 257 MB
+```
+<center>
+<h2 lang="zh-CN">100次需要4.1min </h2>
+<h2 lang="zh-CN">5000次大概需要205min </h2>
+</center>
+
+# <h1 lang="zh-CN">如果是多线程</h1>
+```{r Monte Carlo Split Generator multiple thread, eval=FALSE}
+list.SHR.MC.para <- splithalf::sh_tool(df.split = df.clean, iteration = 100, nc = 16, method = "mc",
+                                       sub = "Subject", var1 = "Match", var2 = "Identity", var3 = "Session")
+# iteration = 100
+# user      system    elapsed 
+# 4.99      1.59      42.42 
+# 880 MB
+```
+
+<center>
+<h2 lang="zh-CN">100次需要49s </h2>
+<h2 lang="zh-CN">5000次大概需要41min </h2>
+</center>
+
+---
+# <h1 lang="en">Foreach Loop</h1>
+```{r library packages, eval=FALSE}
+library(foreach)
+library(parallel)
+library(doParallel)
+
+mcshrgener <- function(df.split, iteration, nc, sub, var1, var2, var3) {
+  # Initialize the parallel backend
+  registerDoParallel(nc)
+  
+    # Run the for loop in parallel
+    split_list <- foreach(j = 1:iteration, .combine = "c") %dopar% {
+      # library() # The package containing functions used within the loop must be loaded within the loop.
+      set.seed(122+j) # The seed must be set within the loop
+      # split-half code
+      # Return the split-half data sets
+      return(list(str_half_split_1, str_half_split_2))
+    }
+  
+  # Stop the parallel backend
+  stopImplicitCluster()
+  
+  # Combine every two sublists into a single list and create a new list of length iteration
+  combined_list <- vector("list", iteration)
+  for (i in 1:iteration) {
+    combined_list[[i]] <- list(split_list[[2*i-1]], split_list[[2*i]])
+  }
+  return(combined_list)
+}
+```
+
+---
+# <h1 lang="en">Foreach Loop</h1>
+## <h1 lang="en">Bug</h1>
+<br>
+*- 最开始，当得到分裂好的两半数据后* <br>
+*- 我在foreach循环内，将两半数据存入一个更大的list中* <br>
+_- 这意味着，我最终得到一个list，这个list中有5000个子list，每个子list中有两个子子list _<br>
+<br>
+*- 于是我得到了一个空的list，但运行时间和CPU占用却是实实在在的* <br>
+<br>
+*- 因此，我想了个笨办法，我直接让foreach直接返回所有两半数据，然后在循环外将它们存入更大的list中* <br>
+*- 我直接让foreach直接返回所有两半数据，然后在循环外将它们存入更大的list中* <br>
+<br>
+
+---
+# <h1 lang="zh-CN">Q: 难道没有包可以完成蒙特卡洛分半吗？</h1>
+## <h2 lang="zh-CN">A: 据我所知，有也没有</h2>
+
+_<h4 lang="zh-CN">有一个包叫splithalfr</h4>_
+_<h4 lang="en"> https://github.com/tpronk/splithalfr </h4>_
+```{r splithalfr, eval=FALSE}
+by_split( data,
+          participants, 
+          fn_score,
+          stratification = NULL, 
+          replications = 1, 
+          method = c("random", "odd_even", "first_second"), 
+          replace = FALSE,
+          split_p = 0.5, subsample_p = 1, 
+          subsample_n = NULL, careful = TRUE, 
+          match_participants = FALSE, 
+          ncores = detectCores(), 
+          seed = NULL, 
+          verbose = TRUE
+)
+```
+_<h4 lang="zh-CN">但这个函数只能按照一个变量对数据进行分层分半(stratification)</h4>_
+_<h4 lang="zh-CN">比如按照Match来分层分半</h4>_
+_<h4 lang="zh-CN">half_1中有10个match试次，10个nonmatch试次</h4>_
+_<h4 lang="zh-CN">half_2中也有10个match试次，10个nonmatch试次</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">Create R Project</h2>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/new_project.png" style="width:90%; height: 90%;">
+</div>
+
+_<h4 lang="zh-CN">新建一个R project</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">Choose R package</h2>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/new_directory_Rpackage.png" style="width:90%; height: 90%;">
+</div>
+
+_<h4 lang="zh-CN">选择类别为R package</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">Select R functions</h2>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/create_Rpackage.png" style="width:90%; height: 90%;">
+</div>
+
+_<h4 lang="zh-CN">取一个R包的名字</h4>_
+_<h4 lang="zh-CN">添加("Add...")写好的函数("*.R")</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">Files</h2>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/package_files.png" style="width:80%; height: 80%;">
+</div>
+
+_<h4 lang="zh-CN">R studio帮你创建好了必须的文件</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">NAMESPACE</h2>
+<br>
+<br>
+<br>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/NAMESPACE.png" style="width:80%; height: 80%;">
+</div>
+<br>
+<br>
+_<h4 lang="zh-CN">import: 你的函数需要用到的包</h4>_
+_<h4 lang="zh-CN">importFrom: 你的函数需要用到的函数</h4>_
+_<h4 lang="zh-CN">export: 使用者看的到的函数（其他函数可以被隐藏）</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">DESCRIPTION</h2>
+<br>
+<br>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/DESCRIPTION.png" style="width:80%; height: 80%;">
+</div>
+<br>
+<br>
+_<h4 lang="zh-CN">空什么，填什么</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">Using .R Create .Rd</h2>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/man.png" style="width:60%; height: 60%;">
+</div>
+_<h4 lang="zh-CN">光标移动到函数名("这里是mc")上</h4>_
+_<h4 lang="zh-CN">按下Ctrl + Shift + Alt + R</h4>_
+_<h4 lang="zh-CN">空什么，填什么</h4>_
+_<h4 lang="zh-CN">我懒得写example，所以删了</h4>_
+_<h4 lang="zh-CN">输入devtools::document</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">Check Package</h2>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/check_package.png" style="width:60%; height: 60%;">
+</div>
+_<h4 lang="zh-CN">检查这个包是否可以创建了</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">Check Package</h2>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/succeeded.png" style="width:90%; height: 90%;">
+</div>
+_<h4 lang="zh-CN">出现这个就是成功了</h4>_
+_<h4 lang="zh-CN">不成功就去问问GPT为什么不成功</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">Build Package</h2>
+<br>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/build.png" style="width:100%; height: 100%;">
+</div>
+<br>
+_<h4 lang="zh-CN">恭喜你制作出了人生中第一个R包</h4>_
+
+---
+# <h1 lang="zh-CN">把函数封装成包</h1>
+## <h2 lang="en">Install Package</h2>
+<br>
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="./pic/install.png" style="width:100%; height: 100%;">
+</div>
+<br>
+_<h4 lang="zh-CN">这个包就被安装在了本地</h4>_
+_<h4 lang="zh-CN">以后你的Environment就更干净了</h4>_
+
+---
+<div style="display:flex; align-items:center; justify-content:center;">
+  <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRhNdJjpyn-dGW0RvXxTK6r4dTqVJYOzs_2J9gHk0RuqYL_3xbRZaInKmaK2_YBLpnzDYU&usqp=CAU" style="width:90%; height: 90%;">
+</div>
+
